@@ -979,6 +979,31 @@ def legalize_bitserial_conv2d(attrs, inputs, types):
     return topi.nn.bitserial_conv2d_legalize(attrs, inputs, types)
 
 
+# Xnor_conv2d
+reg.register_strategy("nn.xnor_conv2d", strategy.xnor_conv2d_strategy)
+reg.register_pattern("nn.xnor_conv2d", OpPattern.OUT_ELEMWISE_FUSABLE)
+
+
+@reg.register_legalize("nn.xnor_conv2d")
+def legalize_xnor_conv2d(attrs, inputs, types):
+    """Legalize xnor_conv2d op.
+
+    Parameters
+    ----------
+    attrs : tvm.ir.Attrs
+        Attributes of current convolution
+    inputs : list of tvm.relay.Expr
+        The args of the Relay expr to be legalized
+    types : list of types
+        List of input and output types
+
+    Returns
+    -------
+    result : tvm.relay.Expr
+        The legalized expr
+    """
+    return topi.nn.xnor_conv2d_legalize(attrs, inputs, types)
+
 # bitserial_dense
 reg.register_strategy("nn.bitserial_dense", strategy.bitserial_dense_strategy)
 reg.register_pattern("nn.bitserial_dense", reg.OpPattern.OUT_ELEMWISE_FUSABLE)

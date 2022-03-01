@@ -187,6 +187,39 @@ def schedule_bitserial_conv2d_nhwc(outs):
     return _schedule_conv2d(outs)
 
 
+def schedule_xnor_conv2d_nchw(outs):
+    """Schedule for xnor_conv2d_nchw
+
+    Parameters
+    ----------
+    outs: Array of Tensor
+          The computation graph description of xnor_conv2d_nchw
+          in the format of an array of tensors.
+
+    Returns
+    -------
+    sch: Schedule
+        The computation schedule for the op.
+    """
+    return _schedule_conv2d(outs)
+
+
+def schedule_xnor_conv2d_nhwc(outs):
+    """Schedule for xnor_conv2d_nhwc
+
+    Parameters
+    ----------
+    outs: Array of Tensor
+          The computation graph description of xnor_conv2d_nchw
+          in the format of an array of tensors.
+
+    Returns
+    -------
+    sch: Schedule
+        The computation schedule for the op.
+    """
+    return _schedule_conv2d(outs)
+
 def schedule_reduce(outs):
     """Schedule for reduction
 

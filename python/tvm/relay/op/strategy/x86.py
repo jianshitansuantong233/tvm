@@ -672,6 +672,28 @@ def bitserial_conv2d_strategy_cpu(attrs, inputs, out_type, target):
     return strategy
 
 
+@xnor_conv2d_strategy.register("cpu")
+def xnor_conv2d_strategy_cpu(attrs, inputs, out_type, target):
+    """xnor_conv2d x86 strategy"""
+    strategy = _op.OpStrategy()
+    layout = attrs.data_layout
+    if layout == "NCHW":
+        strategy.add_implementation(
+            wrap_compute_xnor_conv2d(topi.x86.xnor_conv2d_nchw),
+            wrap_topi_schedule(topi.x86.schedule_xnor_conv2d_nchw),
+            name="xnor_conv2d_nchw.x86",
+        )
+    elif layout == "NHWC":
+        strategy.add_implementation(
+            wrap_compute_xnor_conv2d(topi.x86.xnor_conv2d_nhwc),
+            wrap_topi_schedule(topi.x86.schedule_xnor_conv2d_nhwc),
+            name="xnor_conv2d_nhwc.x86",
+        )
+    else:
+        raise ValueError("Data layout {} not supported.".format(layout))
+    return strategy
+
+
 @bitserial_dense_strategy.register("cpu")
 def bitserial_dense_strategy_cpu(attrs, inputs, out_type, target):
     """bitserial_dense x86 strategy"""

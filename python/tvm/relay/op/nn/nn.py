@@ -3020,6 +3020,84 @@ def bitserial_conv2d(
     )
 
 
+def xnor_conv2d(
+    data,
+    weight,
+    strides=(1, 1),
+    padding=(0, 0),
+    channels=None,
+    kernel_size=(3, 3),
+    activation_bits=1,
+    weight_bits=1,
+    data_layout="NCHW",
+    kernel_layout="OIHW",
+    pack_dtype="uint32",
+    out_dtype="int16",
+    unipolar=True,
+):
+    r"""2D convolution using xnor computation.
+
+    Parameters
+    ----------
+    data : tvm.relay.Expr
+        The input data to the operator.
+
+    weight : tvm.relay.Expr
+        The weight expressions.
+
+    strides : tuple of int, optional
+        The strides of convolution.
+
+    padding : tuple of int, optional
+        The padding of convolution on both sides of inputs before convolution.
+
+    channels : int, optional
+        Number of output channels of this convolution.
+
+    kernel_size : tuple of int, optional
+        The spatial of the convolution kernel.
+
+    activation_bits : int
+        Number of bits to pack for activations.
+
+    weight_bits : int
+        Number of bits to pack for weights.
+
+    data_layout : str, optional
+        Layout of the input.
+
+    kernel_layout : str, optional
+        Layout of the kernel
+
+    pack_dtype: str, optional
+        Datatype to pack bits into.
+
+    out_dtype : str, optional
+        Specifies the output data type for mixed precision conv2d.
+
+    Returns
+    -------
+    result : tvm.relay.Expr
+        The computed result.
+    """
+    # convert 2-way padding to 4-way padding
+    padding = get_pad_tuple2d(padding)
+    return _make.xnor_conv2d(
+        data,
+        weight,
+        strides,
+        padding,
+        channels,
+        kernel_size,
+        activation_bits,
+        weight_bits,
+        data_layout,
+        kernel_layout,
+        pack_dtype,
+        out_dtype,
+        unipolar,
+    )
+
 def bitserial_dense(
     data,
     weight,

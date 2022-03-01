@@ -40,6 +40,7 @@ from .qnn import *
 from .upsampling import *
 from .local_response_norm import *
 from .bitserial_conv2d import *
+from .xnor_conv2d import *
 from .bitserial_dense import *
 from .batch_matmul import *
 from .batch_norm import *

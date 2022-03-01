@@ -194,3 +194,24 @@ def bitserial_conv2d_strategy_hls(attrs, inputs, out_type, target):
     else:
         raise ValueError("Data layout {} not supported.".format(layout))
     return strategy
+
+@xnor_conv2d_strategy.register("hls")
+def xnor_conv2d_strategy_hls(attrs, inputs, out_type, target):
+    """xnor_conv2d hls strategy"""
+    strategy = _op.OpStrategy()
+    layout = attrs.data_layout
+    if layout == "NCHW":
+        strategy.add_implementation(
+            wrap_compute_xnor_conv2d(topi.nn.xnor_conv2d_nchw),
+            wrap_topi_schedule(topi.hls.schedule_xnor_conv2d_nchw),
+            name="xnor_conv2d_nchw.hls",
+        )
+    elif layout == "NHWC":
+        strategy.add_implementation(
+            wrap_compute_xnor_conv2d(topi.nn.xnor_conv2d_nhwc),
+            wrap_topi_schedule(topi.hls.schedule_xnor_conv2d_nhwc),
+            name="xnor_conv2d_nhwc.hls",
+        )
+    else:
+        raise ValueError("Data layout {} not supported.".format(layout))
+    return strategy

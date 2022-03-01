@@ -393,6 +393,9 @@ class BitPackAttrs(Attrs):
 class BinaryConv2DAttrs(Attrs):
     """Attributes used in bitserial conv2d operators"""
 
+@tvm._ffi.register_object("relay.attrs.XnorConv2DAttrs")
+class XnorConv2DAttrs(Attrs):
+    """Attributes used in xnor conv2d operators"""
 
 @tvm._ffi.register_object("relay.attrs.BinaryDenseAttrs")
 class BinaryDenseAttrs(Attrs):

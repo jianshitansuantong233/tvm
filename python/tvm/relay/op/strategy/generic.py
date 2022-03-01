@@ -1534,6 +1534,59 @@ def bitserial_conv2d_strategy(attrs, inputs, out_type, target):
     return strategy
 
 
+# xnor_conv2d
+def wrap_compute_xnor_conv2d(topi_compute):
+    """wrap xnor_conv2d topi compute"""
+
+    def compute_xnor_conv2d(attrs, inputs, out_dtype):
+        """Compute definition for xnor conv2d."""
+        padding = get_const_tuple(attrs.padding)
+        strides = get_const_tuple(attrs.strides)
+        activation_bits = attrs.activation_bits
+        weight_bits = attrs.weight_bits
+        pack_dtype = attrs.pack_dtype
+        out_dtype = attrs.out_dtype
+        unipolar = attrs.unipolar
+        return [
+            topi_compute(
+                inputs[0],
+                inputs[1],
+                strides,
+                padding,
+                activation_bits,
+                weight_bits,
+                pack_dtype,
+                out_dtype,
+                unipolar,
+            )
+        ]
+
+    return compute_xnor_conv2d
+
+
+@override_native_generic_func("xnor_conv2d_strategy")
+def xnor_conv2d_strategy(attrs, inputs, out_type, target):
+    """xnor_conv2d generic strategy"""
+    logger.warning("xnor_conv2d is not optimized for this platform.")
+    strategy = _op.OpStrategy()
+    layout = attrs.data_layout
+    if layout == "NCHW":
+        strategy.add_implementation(
+            wrap_compute_xnor_conv2d(topi.nn.xnor_conv2d_nchw),
+            wrap_topi_schedule(topi.generic.schedule_xnor_conv2d_nchw),
+            name="xnor_conv2d_nchw.generic",
+        )
+    elif layout == "NHWC":
+        strategy.add_implementation(
+            wrap_compute_xnor_conv2d(topi.nn.xnor_conv2d_nhwc),
+            wrap_topi_schedule(topi.generic.schedule_xnor_conv2d_nhwc),
+            name="xnor_conv2d_nhwc.generic",
+        )
+    else:
+        raise ValueError("Data layout {} not supported.".format(layout))
+    return strategy
+
+
 # bitserial_dense
 def wrap_compute_bitserial_dense(topi_compute):
     """wrap bitserial_dense topi compute"""

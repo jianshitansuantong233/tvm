@@ -30,6 +30,7 @@ from .injective import *
 from .reduction import *
 from .pooling import schedule_pool, schedule_adaptive_pool
 from .bitserial_conv2d import *
+from .xnor_conv2d import *
 from .bitserial_dense import *
 from .depthwise_conv2d import *
 from .dense import *

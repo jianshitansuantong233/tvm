@@ -53,7 +53,6 @@ def xnor_conv2d_nhwc(
     weight_bits,
     pack_dtype,
     out_dtype,
-    unipolar,
 ):
     """Compute convolution with pack on spatial axes."""
     assert data.shape[0].value == 1, "spatial pack convolution only support batch size=1"
@@ -161,40 +160,19 @@ def xnor_conv2d_nhwc(
     ib = te.reduce_axis((0, IB), name="ib")
     kb = te.reduce_axis((0, KB), name="kb")
 
-    def _bipolar_conv(n, h, w, co, vh, vw, vc):
+    def _conv(n, h, w, co, vh, vw, vc):
         return te.sum(
             (
-                tvm.tir.popcount(
+                (2*(tvm.tir.popcount(
                     kernel_vec[co, dh, dw, kb, vc, ci].astype("uint16")
-                    & data_vec[n, h, w, vh * HSTR + dh, vw * WSTR + dw, ib, ci].astype("uint16")
+                    ^ data_vec[n, h, w, vh * HSTR + dh, vw * WSTR + dw, ib, ci].astype("uint16")
+                ))-CI*8
                 )
                 << (kb + ib).astype("uint16")
             ),
             axis=[dh, dw, kb, ib, ci],
         )
-
-    def _unipolar_conv(n, h, w, co, vh, vw, vc):
-        return te.sum(
-            (
-                (
-                    tvm.tir.popcount(
-                        kernel_vec[co, dh, dw, kb, vc, ci].astype("int16")
-                        & data_vec[n, h, w, vh * HSTR + dh, vw * WSTR + dw, ib, ci].astype("int16")
-                    )
-                    - tvm.tir.popcount(
-                        ~kernel_vec[co, dh, dw, kb, vc, ci].astype("int16")
-                        & data_vec[n, h, w, vh * HSTR + dh, vw * WSTR + dw, ib, ci]
-                    ).astype("int16")
-                )
-                << (kb + ib).astype("int16")
-            ),
-            axis=[dh, dw, kb, ib, ci],
-        )
-
-    if unipolar:
-        conv_vec = te.compute(ovshape, _unipolar_conv, name="conv_vec", tag="unipolar")
-    else:
-        conv_vec = te.compute(ovshape, _bipolar_conv, name="conv_vec", tag="bipolar")
+    conv_vec = te.compute(ovshape, _conv, name="conv_vec", tag="bipolar")
 
     conv = te.compute(
         oshape,

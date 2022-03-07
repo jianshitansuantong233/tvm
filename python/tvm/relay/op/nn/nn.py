@@ -3033,7 +3033,6 @@ def xnor_conv2d(
     kernel_layout="OIHW",
     pack_dtype="uint32",
     out_dtype="int16",
-    unipolar=True,
 ):
     r"""2D convolution using xnor computation.
 
@@ -3095,7 +3094,6 @@ def xnor_conv2d(
         kernel_layout,
         pack_dtype,
         out_dtype,
-        unipolar,
     )
 
 def bitserial_dense(

@@ -34,7 +34,6 @@ def xnor_conv2d_nchw(
     weight_bits,
     pack_dtype="uint32",
     out_dtype="int16",
-    unipolar=True,
 ):
     """Xnor Conv2D operator.
 
@@ -64,14 +63,19 @@ def xnor_conv2d_nchw(
     pack_dtype: str
         bit packing type
 
-    unipolar: bool
-        if binarization style is in unipolar 1/0 format, instead of bipolar -1/+1 format
-
     Returns
     -------
     output : tvm.te.Tensor
         4-D with shape [batch, out_channel, out_height, out_width]
     """
+    if pack_dtype == "uint8":
+        data_width = 8
+    elif pack_dtype == "uint16":
+        data_width = 16
+    elif pack_dtype == "uint32":
+        data_width = 32
+    elif pack_dtype == "uint64":
+        data_width = 64
     assert isinstance(stride, int) or len(stride) == 2
     Input_q = bitpack(data, activation_bits, pack_axis=1, bit_axis=2, pack_type=pack_dtype)
     if len(kernel.shape) == 4:
@@ -103,42 +107,20 @@ def xnor_conv2d_nchw(
     rx = te.reduce_axis((0, kernel_w), name="rx")
     b1 = te.reduce_axis((0, activation_bits), name="b1")
     b2 = te.reduce_axis((0, weight_bits), name="b2")
-
-    if unipolar:
-
-        def _conv(nn, ff, yy, xx):
-            b1b2 = (b1 + b2).astype(out_dtype)
-            return te.sum(
+    def _conv(nn, ff, yy, xx):
+        b1b2 = (b1 + b2).astype(out_dtype)
+        return te.sum(
+            (
                 (
-                    (
-                        tvm.tir.popcount(
-                            PadInput_q[nn, rc, b1, yy * stride_h + ry, xx * stride_w + rx]
-                            & Filter_q[ff, rc, ry, rx, b2]
-                        )
-                        - tvm.tir.popcount(
-                            PadInput_q[nn, rc, b1, yy * stride_h + ry, xx * stride_w + rx]
-                            & ~Filter_q[ff, rc, ry, rx, b2]
-                        )
-                    )
-                    << (b1b2)
-                ).astype(out_dtype),
-                axis=[rc, ry, rx, b2, b1],
-            ).astype(out_dtype)
-
-    else:
-
-        def _conv(nn, ff, yy, xx):
-            b1b2 = (b1 + b2).astype(out_dtype)
-            return te.sum(
-                (
-                    tvm.tir.popcount(
+                    2*(tvm.tir.popcount(~(
                         PadInput_q[nn, rc, b1, yy * stride_h + ry, xx * stride_w + rx]
-                        & Filter_q[ff, rc, ry, rx, b2]
-                    )
-                    << (b1b2)
-                ).astype(out_dtype),
-                axis=[rc, ry, rx, b2, b1],
-            ).astype(out_dtype)
+                        ^ Filter_q[ff, rc, ry, rx, b2])
+                    ))-in_channel*data_width
+                )
+                << (b1b2)
+            ).astype(out_dtype),
+            axis=[rc, ry, rx, b2, b1],
+        ).astype(out_dtype)
 
     return te.compute(
         (batch, out_channel, out_height, out_width),
@@ -157,7 +139,6 @@ def xnor_conv2d_nhwc(
     weight_bits,
     pack_dtype="uint32",
     out_dtype="int16",
-    unipolar=True,
 ):
     """Xnor Conv2D operator.
 
@@ -187,14 +168,19 @@ def xnor_conv2d_nhwc(
     pack_dtype: str
         bit packing type
 
-    unipolar: bool
-        if binarization style is in unipolar 1/0 format, instead of bipolar -1/+1 format
-
     Returns
     -------
     output : tvm.te.Tensor
         4-D with shape [batch, out_height, out_width, out_channel]
     """
+    if pack_dtype == "uint8":
+        data_width = 8
+    elif pack_dtype == "uint16":
+        data_width = 16
+    elif pack_dtype == "uint32":
+        data_width = 32
+    elif pack_dtype == "uint64":
+        data_width = 64
     assert isinstance(stride, int) or len(stride) == 2
     Input_q = bitpack(data, activation_bits, pack_axis=3, bit_axis=4, pack_type=pack_dtype)
     if len(kernel.shape) == 4:
@@ -228,41 +214,20 @@ def xnor_conv2d_nhwc(
     b1 = te.reduce_axis((0, activation_bits), name="b1")
     b2 = te.reduce_axis((0, weight_bits), name="b2")
 
-    if unipolar:
-
-        def _conv(nn, yy, xx, ff):
-            b1b2 = (b1 + b2).astype(out_dtype)
-            return te.sum(
+    def _conv(nn, yy, xx, ff):
+        b1b2 = (b1 + b2).astype(out_dtype)
+        return te.sum(
+            (
                 (
-                    (
-                        tvm.tir.popcount(
-                            PadInput_q[nn, yy * stride_h + ry, xx * stride_w + rx, rc, b1]
-                            & Filter_q[ry, rx, rc, ff, b2]
-                        )
-                        - tvm.tir.popcount(
-                            PadInput_q[nn, yy * stride_h + ry, xx * stride_w + rx, rc, b1]
-                            & ~Filter_q[ry, rx, rc, ff, b2]
-                        )
-                    )
-                    << b1b2
-                ).astype(out_dtype),
-                axis=[rc, ry, rx, b2, b1],
-            )
-
-    else:
-
-        def _conv(nn, yy, xx, ff):
-            b1b2 = (b1 + b2).astype(out_dtype)
-            return te.sum(
-                (
-                    tvm.tir.popcount(
+                    2*(tvm.tir.popcount(
                         PadInput_q[nn, yy * stride_h + ry, xx * stride_w + rx, rc, b1]
-                        & Filter_q[ry, rx, rc, ff, b2]
-                    )
-                    << b1b2
-                ).astype(out_dtype),
-                axis=[rc, ry, rx, b2, b1],
-            )
+                        ^ Filter_q[ry, rx, rc, ff, b2]
+                    ))-in_channel_q*data_width
+                )
+                << b1b2
+            ).astype(out_dtype),
+            axis=[rc, ry, rx, b2, b1],
+        )
 
     conv = te.compute(
         (batch, out_height, out_width, out_channel),

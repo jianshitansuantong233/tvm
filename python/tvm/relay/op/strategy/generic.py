@@ -1546,7 +1546,6 @@ def wrap_compute_xnor_conv2d(topi_compute):
         weight_bits = attrs.weight_bits
         pack_dtype = attrs.pack_dtype
         out_dtype = attrs.out_dtype
-        unipolar = attrs.unipolar
         return [
             topi_compute(
                 inputs[0],
@@ -1557,7 +1556,6 @@ def wrap_compute_xnor_conv2d(topi_compute):
                 weight_bits,
                 pack_dtype,
                 out_dtype,
-                unipolar,
             )
         ]
 

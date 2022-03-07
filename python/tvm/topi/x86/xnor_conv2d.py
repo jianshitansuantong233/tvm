@@ -37,8 +37,15 @@ def xnor_conv2d_nchw(
     weight_bits,
     pack_dtype="uint32",
     out_dtype="int16",
-    unipolar=True,
 ):
+    if pack_dtype == "uint8":
+        data_width = 8
+    elif pack_dtype == "uint16":
+        data_width = 16
+    elif pack_dtype == "uint32":
+        data_width = 32
+    elif pack_dtype == "uint64":
+        data_width = 64
     """Compute convolution with pack on spatial axes."""
     assert data.shape[0].value == 1, "spatial pack convolution only support batch size=1"
     data_q = bitpack(data, in_bits, pack_axis=1, bit_axis=0, pack_type=pack_dtype)
@@ -126,30 +133,14 @@ def xnor_conv2d_nchw(
     b2 = te.reduce_axis((0, KB), name="kb")
 
     def _conv(n, co, h, w, vh, vw, vc):
-        b1b2 = (b1 + b2).astype(out_dtype)
-        if unipolar:
-            return te.sum(
-                (
-                    tvm.tir.popcount(
-                        data_vec[n, h, w, ci, vh * HSTR + dh, vw * WSTR + dw, b1].astype(out_dtype)
-                        & kernel_vec[co, ci, dh, dw, b2, vc].astype(out_dtype)
-                    )
-                    - tvm.tir.popcount(
-                        data_vec[n, h, w, ci, vh * HSTR + dh, vw * WSTR + dw, b1].astype(out_dtype)
-                        & ~kernel_vec[co, ci, dh, dw, b2, vc]
-                    ).astype(out_dtype)
-                )
-                << b1b2,
-                axis=[ci, dh, dw, b1, b2],
-            )
-
+        b1b2 = (b1 + b2).astype('uint16')
         return te.sum(
             (
-                tvm.tir.popcount(
+                2*(tvm.tir.popcount(
                     data_vec[n, h, w, ci, vh * HSTR + dh, vw * WSTR + dw, b1]
                     & kernel_vec[co, ci, dh, dw, b2, vc]
-                )
-            ).astype(out_dtype)
+                ))-CI*data_width
+            ).astype('uint16')
             << b1b2,
             axis=[ci, dh, dw, b1, b2],
         )
@@ -179,8 +170,15 @@ def xnor_conv2d_nhwc(
     weight_bits,
     pack_dtype="uint32",
     out_dtype="int16",
-    unipolar=True,
 ):
+    if pack_dtype == "uint8":
+        data_width = 8
+    elif pack_dtype == "uint16":
+        data_width = 16
+    elif pack_dtype == "uint32":
+        data_width = 32
+    elif pack_dtype == "uint64":
+        data_width = 64
     """Compute convolution with pack on spatial axes."""
     assert data.shape[0].value == 1, "spatial pack convolution only support batch size=1"
     data_q = bitpack(data, in_bits, pack_axis=3, bit_axis=4, pack_type=pack_dtype)
@@ -274,29 +272,11 @@ def xnor_conv2d_nhwc(
 
     def _conv(n, h, w, co, vh, vw, vc):
         b1b2 = (b1 + b2).astype(out_dtype)
-        if unipolar:
-            return te.sum(
-                (
-                    (
-                        tvm.tir.popcount(
-                            data_vec[n, h, w, vh * HSTR + dh, vw * WSTR + dw, ci, b1]
-                            & kernel_vec[co, dh, dw, ci, vc, b2]
-                        ).astype(out_dtype)
-                        - tvm.tir.popcount(
-                            data_vec[n, h, w, vh * HSTR + dh, vw * WSTR + dw, ci, b1]
-                            & ~kernel_vec[co, dh, dw, ci, vc, b2]
-                        ).astype(out_dtype)
-                    )
-                    << b1b2
-                ),
-                axis=[dh, dw, ci, b1, b2],
-            )
-
         return te.sum(
-            tvm.tir.popcount(
+            (2*(tvm.tir.popcount(
                 data_vec[n, h, w, vh * HSTR + dh, vw * WSTR + dw, ci, b1]
-                & kernel_vec[co, dh, dw, ci, vc, b2]
-            ).astype(out_dtype)
+                ^ kernel_vec[co, dh, dw, ci, vc, b2]
+            ).astype(out_dtype))-CI*data_width)
             << b1b2,
             axis=[dh, dw, ci, b1, b2],
         )

@@ -1069,6 +1069,123 @@ class PyTorchOpConverter:
             res = _op.squeeze(res, axis=[2])
         return res
 
+    def xnor_conv(self, inputs, input_types):
+        # Use transpose or normal
+        use_transpose = True if inputs[6] == 1 else False
+
+        data = inputs[0]
+        weight = inputs[1]
+        bias = inputs[2]
+        strides = tuple(inputs[3])
+        padding = tuple(inputs[4])
+        dilation = tuple(inputs[5])
+
+        if isinstance(weight, _expr.Expr):
+            inferred_shape = self.infer_shape(weight)
+            weight_shape = []
+            for infer in inferred_shape:
+                weight_shape.append(infer)
+        else:
+            msg = "Data type %s could not be parsed in conv op" % (type(weight))
+            raise AssertionError(msg)
+
+        groups = int(inputs[8])
+
+        if use_transpose:
+            channels = weight_shape[1] * groups
+            in_channels = weight_shape[0]
+        else:
+            channels = weight_shape[0]
+            in_channels = weight_shape[1]
+
+        # Check if this is depth wise convolution
+        # We need to reshape weight so that Relay could recognize this is depth wise
+        # weight_shape[1] is always in_channels // groups
+        # For depthwise, in_channels == groups, so weight_shape[1] == 1
+        # If groups > 1 but weight_shape[1] != 1, this is group convolution
+        if groups > 1 and in_channels == 1:
+            channel_multiplier = channels // groups
+            new_weight_shape = (groups, channel_multiplier) + tuple(weight_shape[2:])
+            weight = _op.transform.reshape(weight, new_weight_shape)
+
+        kernel_size = weight_shape[2:]
+        use_bias = isinstance(bias, _expr.Expr)
+
+        # We are trying to invoke various relay operations through a single conv_op variable.
+        # However the function signatures for some operations have additional attributes so we
+        # pass these in along with the standard ones.
+        additional_arguments = dict()
+
+        if use_transpose:
+            if len(kernel_size) == 3:
+                conv_op = _op.nn.conv3d_transpose
+            elif len(kernel_size) == 2:
+                conv_op = _op.nn.conv2d_transpose
+            else:
+                conv_op = _op.nn.conv1d_transpose
+            output_padding = tuple(inputs[7])
+            additional_arguments["output_padding"] = output_padding
+
+        else:
+            if len(kernel_size) == 3:
+                conv_op = _op.nn.conv3d
+            elif len(kernel_size) == 2:
+                conv_op = _op.nn.xnor_conv2d
+            else:
+                conv_op = _op.nn.conv1d
+
+        if len(kernel_size) == 3:
+            data_layout = "NCDHW"
+            kernel_layout = "OIDHW"
+        elif len(kernel_size) == 2:
+            data_layout = "NCHW"
+            kernel_layout = "OIHW"
+            if use_transpose:
+                # Transposed convolutions have IOHW layout.
+                kernel_layout = "IOHW"
+        else:
+            data_layout = "NCW"
+            kernel_layout = "OIW"
+
+        # Conv1d does not currently support grouped convolution so we convert it to conv2d
+        is_grouped_conv1d = False
+        if groups > 1 and len(kernel_size) == 1 and not use_transpose:
+            is_grouped_conv1d = True
+            conv_op = _op.nn.conv2d
+            kernel_size = [1] + kernel_size
+            strides = (1,) + strides
+            padding = (0,) + padding
+            dilation = (1,) + dilation
+            data = _op.expand_dims(data, axis=2)
+            weight = _op.expand_dims(weight, axis=2)
+            data_layout = "NCHW"
+            kernel_layout = "OIHW"
+
+        conv_out = conv_op(
+            data,
+            weight,
+            strides=strides,
+            padding=padding,
+            channels=channels,
+            kernel_size=kernel_size,
+            data_layout=data_layout,
+            kernel_layout=kernel_layout,
+            activation_bits=1,
+            weight_bits=1,
+            pack_dtype='uint32',
+            out_dtype='float32',
+            **additional_arguments,
+        )
+        if use_bias:
+            res = _op.nn.bias_add(conv_out, bias)
+        else:
+            res = conv_out
+        if is_grouped_conv1d:
+            # Because we conducted grouped conv1d convolution through conv2d we must
+            # squeeze the output to get the correct result.
+            res = _op.squeeze(res, axis=[2])
+        return res
+
     def softmax(self, inputs, input_types):
         data = inputs[0]
         axis = inputs[1]
@@ -3342,6 +3459,7 @@ class PyTorchOpConverter:
 
     def convert_operators(self, operators, outputs, ret_names):
         """Convert each Torch IR operators to Relay equivalent"""
+        conv_full = True
         for node_name, op_node in operators:
             operator = op_node.kind()
             inputs = _get_op_inputs(op_node, outputs)
@@ -3397,11 +3515,14 @@ class PyTorchOpConverter:
                     )
                     relay_op = self.convert_map[operator[:-1]]
                 else:
-                    relay_op = self.convert_map[operator]
-
-                relay_out = relay_op(
-                    inputs, _get_input_types(op_node, outputs, default_dtype=self.default_dtype)
-                )
+                    if operator == 'aten::_convolution' and not conv_full:
+                        relay_op = self.xnor_conv
+                        relay_out = relay_op(inputs,_get_input_types(op_node, outputs, default_dtype=self.default_dtype))
+                    else:
+                        if operator == 'aten::_convolution':
+                            conv_full=False
+                        relay_op = self.convert_map[operator]
+                        relay_out = relay_op(inputs, _get_input_types(op_node, outputs, default_dtype=self.default_dtype))
                 self.record_output_type(relay_out)
 
                 if isinstance(relay_out, tuple):
@@ -3626,7 +3747,7 @@ def _get_pytorch_value_type(typ, default_dtype="float32"):
         return "UnsupportedType"
 
 
-def _get_input_types(op_node, outputs, default_dtype="float32"):
+def _get_input_types(op_node, outputs, default_dtype="float32", conv=False):
     """Returns a TVM dtype for each input nodes derived from the torch type"""
     in_types = []
     for inp in op_node.inputs():
@@ -3994,13 +4115,14 @@ def from_pytorch(
     outputs = _get_relay_input_vars(
         graph, input_infos, prelude, default_dtype=default_dtype, is_module=is_module
     )
-
+    print(outputs)
     if use_parser_friendly_name:
         new_names = [key.replace(".", "_") for key in params.keys()]
         params = dict(zip(new_names, params.values()))
 
     param_vars, tensors, packed_param_map = convert_params(graph, params, use_parser_friendly_name)
-
+    print(param_vars)
+    print(packed_param_map)
     tvm_params = {k: tvm.nd.array(v) for k, v in tensors.items()}
 
     outputs.update(param_vars)
@@ -4025,7 +4147,7 @@ def from_pytorch(
         converter.update_convert_map(qnn_torch.convert_map)
 
     outputs = converter.convert_operators(_get_operator_nodes(graph.nodes()), outputs, ret_name)
-
+    print(outputs)
     # ListConstruct kept original python list. Convert to tuple.
     outputs = [_expr.Tuple(output) if isinstance(output, list) else output for output in outputs]
 

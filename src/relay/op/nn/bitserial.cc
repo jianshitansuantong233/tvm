@@ -230,7 +230,7 @@ bool XnorConv2DRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
 Expr MakeXnorConv2D(Expr data, Expr weight, Array<IndexExpr> strides, Array<IndexExpr> padding,
                       IndexExpr channels, Array<IndexExpr> kernel_size, int activation_bits,
                       int weight_bits, String data_layout, String kernel_layout,
-                      DataType pack_dtype, DataType out_dtype, bool unipolar) {
+                      DataType pack_dtype, DataType out_dtype) {
   auto attrs = make_object<XnorConv2DAttrs>();
   attrs->strides = std::move(strides);
   attrs->padding = std::move(padding);
@@ -242,7 +242,6 @@ Expr MakeXnorConv2D(Expr data, Expr weight, Array<IndexExpr> strides, Array<Inde
   attrs->kernel_layout = std::move(kernel_layout);
   attrs->pack_dtype = std::move(pack_dtype);
   attrs->out_dtype = std::move(out_dtype);
-  attrs->unipolar = unipolar;
   static const Op& op = Op::Get("nn.xnor_conv2d");
   return Call(op, {data, weight}, Attrs(attrs), {});
 }

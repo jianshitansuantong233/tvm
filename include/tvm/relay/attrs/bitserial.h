@@ -115,7 +115,6 @@ struct XnorConv2DAttrs : public tvm::AttrsNode<XnorConv2DAttrs> {
   std::string kernel_layout;
   DataType pack_dtype;
   DataType out_dtype;
-  bool unipolar;
 
   TVM_DECLARE_ATTRS(XnorConv2DAttrs, "relay.attrs.XnorConv2DAttrs") {
     TVM_ATTR_FIELD(strides)
@@ -148,8 +147,6 @@ struct XnorConv2DAttrs : public tvm::AttrsNode<XnorConv2DAttrs> {
         .set_default(NullValue<DataType>())
         .describe("Datatype to pack bits into.");
     TVM_ATTR_FIELD(out_dtype).set_default(NullValue<DataType>()).describe("Output datatype.");
-    TVM_ATTR_FIELD(unipolar).set_default(true).describe(
-        "Whether to use unipolar or bipolar quantization.");
   }
 };
 

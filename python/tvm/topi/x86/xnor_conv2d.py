@@ -48,7 +48,7 @@ def xnor_conv2d_nchw(
         data_width = 64
     """Compute convolution with pack on spatial axes."""
     assert data.shape[0].value == 1, "spatial pack convolution only support batch size=1"
-    data_q = bitpack(data, in_bits, pack_axis=1, bit_axis=0, pack_type=pack_dtype)
+    data_q = bitpack(data, in_bits, pack_axis=1, bit_axis=4, pack_type=pack_dtype)
     # Check if kernel is already bitpacked
     if len(kernel.shape) == 4:
         kernel_q = bitpack(kernel, weight_bits, pack_axis=1, bit_axis=0, pack_type=pack_dtype)
@@ -58,15 +58,15 @@ def xnor_conv2d_nchw(
         OCO, _, KH, KW, KB, VC = get_const_tuple(kernel_vec.shape)
         CO = OCO * VC
 
-    IB, N, CI, H, W = get_const_tuple(data_q.shape)
+    N, CI, H, W, IB= get_const_tuple(data_q.shape)
     KB, CO, _, KH, KW = get_const_tuple(kernel_q.shape)
 
     if isinstance(padding, int) or (isinstance(padding, (tuple, list)) and len(padding) == 2):
         TPAD, LPAD, DPAD, RPAD = get_pad_tuple(padding, kernel)
     else:
         TPAD, LPAD, DPAD, RPAD = padding
-    pad_before = [0, 0, 0, TPAD, LPAD]
-    pad_after = [0, 0, 0, DPAD, RPAD]
+    pad_before = [0, 0, TPAD, LPAD, 0]
+    pad_after = [0, 0, DPAD, RPAD, 0]
 
     if isinstance(stride, (tuple, list)):
         HSTR, WSTR = stride
@@ -115,7 +115,7 @@ def xnor_conv2d_nchw(
 
     data_vec = te.compute(
         dvshape,
-        lambda n, h, w, ci, vh, vw, b: data_pad[b][n][ci][h * VH * HSTR + vh][w * VW * WSTR + vw],
+        lambda n, h, w, ci, vh, vw, b: data_pad[n][ci][h * VH * HSTR + vh][w * VW * WSTR + vw][b],
         name="data_vec",
     )
 
@@ -133,15 +133,15 @@ def xnor_conv2d_nchw(
     b2 = te.reduce_axis((0, KB), name="kb")
 
     def _conv(n, co, h, w, vh, vw, vc):
-        b1b2 = (b1 + b2).astype('uint16')
+        b1b2 = (b1 + b2).astype(pack_dtype)
         return te.sum(
-            (
+            ((
                 2*(tvm.tir.popcount(
                     data_vec[n, h, w, ci, vh * HSTR + dh, vw * WSTR + dw, b1]
                     & kernel_vec[co, ci, dh, dw, b2, vc]
                 ))-CI*data_width
-            ).astype('uint16')
-            << b1b2,
+            ).astype(pack_dtype)
+            << b1b2).astype(out_dtype),
             axis=[ci, dh, dw, b1, b2],
         )
 
@@ -387,9 +387,14 @@ def _schedule_xnor_conv2d_nchw(
         hpad = get_const_int((TH - IH) // 2)
         wpad = get_const_int((TW - IW) // 2)
         padding = (hpad, wpad)
-
-    hstride = get_const_int((TH - KH) // (OH - 1))
-    wstride = get_const_int((TW - KW) // (OW - 1))
+    if OH==1:
+        hstride=1
+    else:
+        hstride = get_const_int((TH - KH) // (OH - 1))
+    if OW==1:
+        wstride=1
+    else:
+        wstride = get_const_int((TW - KW) // (OW - 1))    
     stride = (hstride, wstride)
 
     VC = cfg["tile_co"].size[-1]

@@ -1170,7 +1170,7 @@ class PyTorchOpConverter:
             kernel_size=kernel_size,
             data_layout=data_layout,
             kernel_layout=kernel_layout,
-            activation_bits=1,
+            activation_bits=2,
             weight_bits=1,
             pack_dtype='uint32',
             out_dtype='float32',
@@ -4115,14 +4115,11 @@ def from_pytorch(
     outputs = _get_relay_input_vars(
         graph, input_infos, prelude, default_dtype=default_dtype, is_module=is_module
     )
-    print(outputs)
     if use_parser_friendly_name:
         new_names = [key.replace(".", "_") for key in params.keys()]
         params = dict(zip(new_names, params.values()))
 
     param_vars, tensors, packed_param_map = convert_params(graph, params, use_parser_friendly_name)
-    print(param_vars)
-    print(packed_param_map)
     tvm_params = {k: tvm.nd.array(v) for k, v in tensors.items()}
 
     outputs.update(param_vars)

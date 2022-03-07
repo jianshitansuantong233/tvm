@@ -431,8 +431,8 @@ def xnor_conv2d_strategy_arm_cpu(attrs, inputs, out_type, target):
     layout = attrs.data_layout
     if layout == "NCHW":
         strategy.add_implementation(
-            wrap_compute_xnor_conv2d(topi.arm_cpu.xnor_conv2d_nchw),
-            wrap_topi_schedule(topi.arm_cpu.schedule_xnor_conv2d_nchw),
+            wrap_compute_xnor_conv2d(topi.x86.xnor_conv2d_nchw),
+            wrap_topi_schedule(topi.x86.schedule_xnor_conv2d_nchw),
             name="xnor_conv2d_nchw.arm_cpu",
         )
     elif layout == "NHWC":
